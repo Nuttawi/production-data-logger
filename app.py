@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, time
 # --- การตั้งค่าเริ่มต้น (Initialization) ---
 # กำหนดรายการตรวจสอบและเป้าหมาย
 CHECKLIST_ITEMS = {
-    "ความเร็วที่ใช้ในการเดินเครื่อง": "30 - 60 ถุง/นาที",
+    "ความเร็วที่ใช้ในการเดินเครื่อง": "30 - 60 องคุลี/นาที",
     "ตรวจสอบอุณหภูมิ Vertical Sealing": "120-210°C",
     "ตรวจสอบอุณหภูมิ Upper Inner": "90-155°C",
     "ตรวจสอบอุณหภูมิ Lower Inner": "75-155°C",
@@ -36,6 +36,8 @@ SHIFT_OPTIONS = {
 
 # เพิ่ม DataFrame สำหรับเก็บข้อมูลรายวัน (แยกตามวันที่)
 # โดยแต่ละวันจะเก็บข้อมูลในรูปแบบ DataFrame ที่มีคอลัมน์เวลาครบ 24 ชั่วโมง
+# หากข้อมูลหายไปทุกครั้งที่ Deploy หรือรีเฟรช นั่นเพราะข้อมูลถูกเก็บใน session_state เท่านั้น
+# ต้องมีการบันทึกลงไฟล์หรือ database จริงๆ เพื่อให้ข้อมูลอยู่ถาวร
 if 'daily_machine_params_data' not in st.session_state:
     st.session_state.daily_machine_params_data = {} # Dictionary เพื่อเก็บ DataFrame แยกตามวันที่
 
@@ -68,7 +70,7 @@ with st.form("machine_param_form"):
     with col2:
         # ช่องให้เลือกวันที่
         selected_date = st.date_input("วันที่บันทึก", datetime.now())
-    with col3: # บรรทัดที่ 71: เพิ่มเครื่องหมาย ":" ท้าย col3
+    with col3: # แก้ไข: ต้องมี ":" หลัง col3
         # ช่องให้เลือกเวลา
         selected_time = st.time_input("เวลาบันทึก", datetime.now().time())
         
@@ -107,4 +109,31 @@ with st.form("machine_param_form"):
 
 st.write("---")
 
-### ส่วนที่ 2: ข้อมูลพารามิ
+### ส่วนที่ 2: ข้อมูลพารามิเตอร์ที่บันทึกไว้
+
+st.header("บันทึกผลการตรวจสอบ / เวลาตรวจสอบ")
+
+# เพิ่มช่องให้เลือกวันที่สำหรับแสดงข้อมูล
+display_date = st.date_input("เลือกวันที่เพื่อแสดงข้อมูล", datetime.now())
+display_date_str = display_date.strftime("%Y-%m-%d")
+
+# เพิ่มช่องให้เลือกกะสำหรับการแสดงผล (ยังคงอยู่ที่นี่)
+selected_shift_for_display_key = st.selectbox(
+    "เลือกกะเพื่อแสดงผล", 
+    list(SHIFT_OPTIONS.keys()), 
+    index=0 # กะเช้าเป็นค่าเริ่มต้น
+)
+selected_shift_hours_to_display = SHIFT_OPTIONS[selected_shift_for_display_key]
+
+
+if display_date_str in st.session_state.daily_machine_params_data:
+    df_to_display = st.session_state.daily_machine_params_data[display_date_str].copy()
+    
+    # กรองเฉพาะคอลัมน์ที่ต้องการแสดงตามกะที่เลือก
+    # ตรวจสอบว่าคอลัมน์ที่ต้องการแสดงมีอยู่ใน DataFrame ก่อน
+    cols_to_select = ['รายการตรวจสอบ', 'เป้าหมาย'] + selected_shift_hours_to_display
+    cols_present = [col for col in cols_to_select if col in df_to_display.columns]
+    
+    st.dataframe(df_to_display[cols_present])
+else:
+    st.info(f"ยังไม่มีข้อมูลพารามิเตอร์เครื่องจักรสำหรับวันที่ {display_date_str} ถูกบันทึก")
