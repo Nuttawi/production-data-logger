@@ -1,4 +1,4 @@
-pages/1_Quality_Check.py
+#1_Quality_Check.py
 import streamlit as st
 import pandas as pd # import เมื่อจำเป็นเท่านั้น
 
