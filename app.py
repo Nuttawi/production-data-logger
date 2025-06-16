@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, time
 # --- การตั้งค่าเริ่มต้น (Initialization) ---
 # กำหนดรายการตรวจสอบและเป้าหมาย
 CHECKLIST_ITEMS = {
-    "ความเร็วที่ใช้ในการเดินเครื่อง": "30 - 60 องคุลี/นาที",
+    "ความเร็วที่ใช้ในการเดินเครื่อง": "30 - 60 ถุง/นาที",
     "ตรวจสอบอุณหภูมิ Vertical Sealing": "120-210°C",
     "ตรวจสอบอุณหภูมิ Upper Inner": "90-155°C",
     "ตรวจสอบอุณหภูมิ Lower Inner": "75-155°C",
@@ -68,4 +68,43 @@ with st.form("machine_param_form"):
     with col2:
         # ช่องให้เลือกวันที่
         selected_date = st.date_input("วันที่บันทึก", datetime.now())
-    with col3
+    with col3: # บรรทัดที่ 71: เพิ่มเครื่องหมาย ":" ท้าย col3
+        # ช่องให้เลือกเวลา
+        selected_time = st.time_input("เวลาบันทึก", datetime.now().time())
+        
+    st.write("---")
+
+    # สร้างช่องกรอกข้อมูลสำหรับแต่ละรายการตรวจสอบ
+    input_values = {}
+    for i, (item, target) in enumerate(CHECKLIST_ITEMS.items()):
+        input_label = f"{i+1}. {item} (เป้าหมาย: {target})"
+        input_values[item] = st.text_input(input_label, key=f"param_input_{i}")
+
+    submitted = st.form_submit_button("บันทึกข้อมูลพารามิเตอร์")
+
+    if submitted:
+        # รวมวันที่และเวลาที่เลือก
+        combined_datetime = datetime.combine(selected_date, selected_time)
+        record_date_str = combined_datetime.strftime("%Y-%m-%d")
+        record_hour_str = combined_datetime.strftime("%H:00") # ปัดเป็นชั่วโมงเต็ม
+
+        # ดึง DataFrame ของวันที่เลือกมาใช้งาน
+        current_day_df = get_daily_df(record_date_str)
+
+        # ตรวจสอบว่าคอลัมน์ชั่วโมงที่จะบันทึกมีอยู่ใน DataFrame หรือไม่
+        if record_hour_str in current_day_df.columns:
+            # อัปเดตข้อมูลใน DataFrame
+            for item, value in input_values.items():
+                row_index = current_day_df[current_day_df['รายการตรวจสอบ'] == item].index[0]
+                current_day_df.at[row_index, record_hour_str] = value
+            
+            # บันทึก DataFrame ที่อัปเดตแล้วกลับไป
+            st.session_state.daily_machine_params_data[record_date_str] = current_day_df
+            st.success(f"บันทึกข้อมูลพารามิเตอร์เครื่องจักรสำหรับวันที่ {record_date_str} เวลา {record_hour_str} เรียบร้อยแล้ว!")
+        else:
+            st.error(f"ไม่สามารถบันทึกข้อมูลในคอลัมน์เวลา {record_hour_str} ได้. กรุณาตรวจสอบการตั้งค่า.")
+
+
+st.write("---")
+
+### ส่วนที่ 2: ข้อมูลพารามิ
