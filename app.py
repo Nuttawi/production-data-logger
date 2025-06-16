@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time
 
 # --- การตั้งค่าเริ่มต้น (Initialization) ---
 # กำหนดรายการตรวจสอบและเป้าหมาย
@@ -16,24 +16,40 @@ CHECKLIST_ITEMS = {
     "ตรวจสอบอุณหภูมิ KR hot bottom plate": "60-140°C"
 }
 
-# กำหนดคอลัมน์เริ่มต้นสำหรับ DataFrame ที่จะเก็บข้อมูล
-# เราจะใช้ structure ที่แตกต่างออกไป เพื่อให้ง่ายต่อการแสดงผลแบบตารางชั่วโมง
-# เพิ่มคอลัมน์เวลาให้ครอบคลุม 24 ชั่วโมง เพื่อความยืดหยุ่นในการบันทึก manual
-# แต่จะแสดงแค่ 8:00 - 21:00 ในตารางผลลัพธ์
+# กำหนดคอลัมน์เวลาสำหรับแต่ละกะ
 ALL_HOURS_COLUMNS = [f'{h:02d}:00' for h in range(24)] # 00:00 - 23:00
 
-if 'machine_params_data_by_time' not in st.session_state:
-    st.session_state.machine_params_data_by_time = pd.DataFrame(
-        columns=['รายการตรวจสอบ', 'เป้าหมาย'] + ALL_HOURS_COLUMNS
-    )
-    # เพิ่มรายการตรวจสอบและเป้าหมายลงใน DataFrame เริ่มต้น
-    for item, target in CHECKLIST_ITEMS.items():
-        st.session_state.machine_params_data_by_time.loc[len(st.session_state.machine_params_data_by_time)] = \
-            [item, target] + ['' for _ in range(len(ALL_HOURS_COLUMNS))] # ใช้ ALL_HOURS_COLUMNS ในการสร้างคอลัมน์เริ่มต้น
+# กะเช้า: 08:00 - 19:00 (รวม OT)
+MORNING_SHIFT_HOURS = [f'{h:02d}:00' for h in range(8, 20)] # ถึง 19:00 -> range(8, 20)
+
+# กะดึก: 19:00 - 08:00 (ของวันถัดไป)
+NIGHT_SHIFT_HOURS_PART1 = [f'{h:02d}:00' for h in range(19, 24)] # 19:00 - 23:00
+NIGHT_SHIFT_HOURS_PART2 = [f'{h:02d}:00' for h in range(8)] # 00:00 - 07:00 (ถึง 08:00 ของวันถัดไป)
+NIGHT_SHIFT_HOURS = NIGHT_SHIFT_HOURS_PART1 + NIGHT_SHIFT_HOURS_PART2
+
+SHIFT_OPTIONS = {
+    "กะเช้า (08:00 - 19:00)": MORNING_SHIFT_HOURS,
+    "กะดึก (19:00 - 08:00)": NIGHT_SHIFT_HOURS,
+    "แสดงทั้งหมด (00:00 - 23:00)": ALL_HOURS_COLUMNS
+}
+
 
 # เพิ่ม DataFrame สำหรับเก็บข้อมูลรายวัน (แยกตามวันที่)
+# โดยแต่ละวันจะเก็บข้อมูลในรูปแบบ DataFrame ที่มีคอลัมน์เวลาครบ 24 ชั่วโมง
 if 'daily_machine_params_data' not in st.session_state:
     st.session_state.daily_machine_params_data = {} # Dictionary เพื่อเก็บ DataFrame แยกตามวันที่
+
+# --- ฟังก์ชันช่วยสร้าง DataFrame สำหรับแต่ละวัน ---
+def get_daily_df(date_str):
+    if date_str not in st.session_state.daily_machine_params_data:
+        # ถ้ายังไม่มีข้อมูลสำหรับวันที่นี้ ให้สร้าง DataFrame ใหม่
+        new_day_df = pd.DataFrame(
+            columns=['รายการตรวจสอบ', 'เป้าหมาย'] + ALL_HOURS_COLUMNS
+        )
+        for item, target in CHECKLIST_ITEMS.items():
+            new_day_df.loc[len(new_day_df)] = [item, target] + ['' for _ in range(len(ALL_HOURS_COLUMNS))]
+        st.session_state.daily_machine_params_data[date_str] = new_day_df
+    return st.session_state.daily_machine_params_data[date_str]
 
 
 st.title("🏭 ระบบบันทึกข้อมูลการผลิต (Machine Parameters)")
@@ -46,7 +62,7 @@ st.header("บันทึกพารามิเตอร์เครื่อ
 with st.form("machine_param_form"):
     st.markdown("**กรุณากรอกข้อมูลพารามิเตอร์เครื่องจักร:**")
     
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col4 = st.columns(4) # เพิ่มคอลัมน์สำหรับเลือกกะ
     with col1:
         machine_id = st.text_input("รหัสเครื่องจักร (Machine ID)", value="M001")
     with col2:
@@ -55,6 +71,13 @@ with st.form("machine_param_form"):
     with col3:
         # ช่องให้เลือกเวลา
         selected_time = st.time_input("เวลาบันทึก", datetime.now().time())
+    with col4:
+        # ช่องให้เลือกกะสำหรับการบันทึก
+        selected_shift_for_input = st.selectbox(
+            "เลือกกะสำหรับการบันทึก", 
+            list(SHIFT_OPTIONS.keys()), 
+            index=0 # กะเช้าเป็นค่าเริ่มต้น
+        )
         
     st.write("---")
 
@@ -72,18 +95,8 @@ with st.form("machine_param_form"):
         record_date_str = combined_datetime.strftime("%Y-%m-%d")
         record_hour_str = combined_datetime.strftime("%H:00") # ปัดเป็นชั่วโมงเต็ม
 
-        # ตรวจสอบว่ามีข้อมูลสำหรับวันที่เลือกอยู่แล้วหรือไม่
-        if record_date_str not in st.session_state.daily_machine_params_data:
-            # ถ้ายังไม่มี ให้สร้าง DataFrame ใหม่สำหรับวันนี้
-            new_day_df = pd.DataFrame(
-                columns=['รายการตรวจสอบ', 'เป้าหมาย'] + ALL_HOURS_COLUMNS
-            )
-            for item, target in CHECKLIST_ITEMS.items():
-                new_day_df.loc[len(new_day_df)] = [item, target] + ['' for _ in range(len(ALL_HOURS_COLUMNS))]
-            st.session_state.daily_machine_params_data[record_date_str] = new_day_df
-
         # ดึง DataFrame ของวันที่เลือกมาใช้งาน
-        current_day_df = st.session_state.daily_machine_params_data[record_date_str]
+        current_day_df = get_daily_df(record_date_str)
 
         # ตรวจสอบว่าคอลัมน์ชั่วโมงที่จะบันทึกมีอยู่ใน DataFrame หรือไม่
         if record_hour_str in current_day_df.columns:
@@ -108,7 +121,18 @@ st.header("บันทึกผลการตรวจสอบ / เวลา
 display_date = st.date_input("เลือกวันที่เพื่อแสดงข้อมูล", datetime.now())
 display_date_str = display_date.strftime("%Y-%m-%d")
 
+# เพิ่มช่องให้เลือกกะสำหรับการแสดงผล
+selected_shift_for_display_key = st.selectbox(
+    "เลือกกะเพื่อแสดงผล", 
+    list(SHIFT_OPTIONS.keys()), 
+    index=0 # กะเช้าเป็นค่าเริ่มต้น
+)
+selected_shift_hours_to_display = SHIFT_OPTIONS[selected_shift_for_display_key]
+
+
 if display_date_str in st.session_state.daily_machine_params_data:
-    st.dataframe(st.session_state.daily_machine_params_data[display_date_str])
-else:
-    st.info(f"ยังไม่มีข้อมูลพารามิเตอร์เครื่องจักรสำหรับวันที่ {display_date_str} ถูกบันทึก")
+    df_to_display = st.session_state.daily_machine_params_data[display_date_str].copy()
+    
+    # กรองเฉพาะคอลัมน์ที่ต้องการแสดงตามกะที่เลือก
+    # ตรวจสอบว่าคอลัมน์ที่ต้องการแสดงมีอยู่ใน DataFrame ก่อน
+    cols_present = [col for col in ['รายการตรวจสอบ', 'เป้าหมาย'] + selected_shift
