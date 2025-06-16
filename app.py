@@ -133,6 +133,12 @@ selected_shift_hours_to_display = SHIFT_OPTIONS[selected_shift_for_display_key]
 if display_date_str in st.session_state.daily_machine_params_data:
     df_to_display = st.session_state.daily_machine_params_data[display_date_str].copy()
     
+    # แก้ไข SyntaxError ตรงนี้: ตรวจสอบวงเล็บปิด
     # กรองเฉพาะคอลัมน์ที่ต้องการแสดงตามกะที่เลือก
     # ตรวจสอบว่าคอลัมน์ที่ต้องการแสดงมีอยู่ใน DataFrame ก่อน
-    cols_present = [col for col in ['รายการตรวจสอบ', 'เป้าหมาย'] + selected_shift
+    cols_to_select = ['รายการตรวจสอบ', 'เป้าหมาย'] + selected_shift_hours_to_display
+    cols_present = [col for col in cols_to_select if col in df_to_display.columns]
+    
+    st.dataframe(df_to_display[cols_present])
+else:
+    st.info(f"ยังไม่มีข้อมูลพารามิเตอร์เครื่องจักรสำหรับวันที่ {display_date_str} ถูกบันทึก")
