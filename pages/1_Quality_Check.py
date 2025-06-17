@@ -2,10 +2,32 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta, time
 
-# ... (โค้ดส่วน CHECKLIST_ITEMS, ALL_HOURS_COLUMNS, MORNING_SHIFT_HOURS, NIGHT_SHIFT_HOURS_PART1, NIGHT_SHIFT_HOURS_PART2, NIGHT_SHIFT_HOURS, SHIFT_OPTIONS เหมือนเดิม) ...
+# --- การตั้งค่าเริ่มต้น (Initialization) ---
+# กำหนดรายการตรวจสอบและเป้าหมาย
+CHECKLIST_ITEMS = {
+    "ความเร็วที่ใช้ในการเดินเครื่อง": "30 - 60 องคุลี/นาที",
+    "ตรวจสอบอุณหภูมิ Vertical Sealing": "120-210°C",
+    "ตรวจสอบอุณหภูมิ Upper Inner": "90-155°C",
+    "ตรวจสอบอุณหภูมิ Lower Inner": "75-155°C",
+    "ตรวจสอบอุณหภูมิ Upper Outer": "90-155°C",
+    "ตรวจสอบอุณหภูมิ Lower Outer": "75-155°C",
+    "ตรวจสอบอุณหภูมิ KR Carousel": "60-200°C",
+    "ตรวจสอบอุณหภูมิ KR hot top plate": "85-180°C",
+    "ตรวจสอบอุณหภูมิ KR hot bottom plate": "60-140°C"
+}
 
-# Ensure NIGHT_SHIFT_HOURS_PART2 is corrected from previous step
+# กำหนดคอลัมน์เวลาสำหรับแต่ละกะ
+ALL_HOURS_COLUMNS = [f'{h:02d}:00' for h in range(24)] # 00:00 - 23:00
+
+# กะเช้า: 08:00 - 19:00 (รวม OT)
+MORNING_SHIFT_HOURS = [f'{h:02d}:00' for h in range(8, 20)] # ถึง 19:00 -> range(8, 20)
+
+# กะดึก: 19:00 - 08:00 (ของวันถัดไป)
+NIGHT_SHIFT_HOURS_PART1 = [f'{h:02d}:00' for h in range(19, 24)] # 19:00 - 23:00
 NIGHT_SHIFT_HOURS_PART2 = [f'{h:02d}:00' for h in range(9)] # 00:00 - 08:00 (ถึง 08:00 ของวันถัดไป)
+
+# บรรทัดนี้ NIGHT_SHIFT_HOURS ต้องอยู่หลังจาก NIGHT_SHIFT_HOURS_PART1 และ NIGHT_SHIFT_HOURS_PART2
+# (ตรวจสอบว่าบรรทัดที่ 9 ในไฟล์ของคุณคือบรรทัดนี้ และสองบรรทัดบนอยู่ก่อนหน้า)
 NIGHT_SHIFT_HOURS = NIGHT_SHIFT_HOURS_PART1 + NIGHT_SHIFT_HOURS_PART2
 
 SHIFT_OPTIONS = {
@@ -18,8 +40,7 @@ SHIFT_OPTIONS = {
 if 'daily_machine_params_data' not in st.session_state:
     st.session_state.daily_machine_params_data = {}
 
-# เพิ่มค่าเริ่มต้นสำหรับเวลาที่บันทึก
-# ใช้ key สำหรับ session_state เพื่อเก็บค่าเริ่มต้นของเวลา
+# เพิ่มค่าเริ่มต้นสำหรับเวลาที่บันทึก (เหมือนเดิม)
 if 'initial_record_time' not in st.session_state:
     st.session_state.initial_record_time = datetime.now().time()
 
@@ -51,8 +72,6 @@ with st.form("machine_param_form"):
     with col2:
         selected_date = st.date_input("วันที่บันทึก", datetime.now())
     with col3:
-        # ****** การแก้ไขที่สำคัญตรงนี้ ******
-        # ใช้ค่าจาก st.session_state.initial_record_time เป็นค่าเริ่มต้นของ time_input
         selected_time = st.time_input("เวลาบันทึก", value=st.session_state.initial_record_time)
         
     st.write("---")
@@ -79,15 +98,13 @@ with st.form("machine_param_form"):
             st.session_state.daily_machine_params_data[record_date_str] = current_day_df
             st.success(f"บันทึกข้อมูลพารามิเตอร์เครื่องจักรสำหรับวันที่ {record_date_str} เวลา {record_hour_str} เรียบร้อยแล้ว!")
             
-            # ****** การแก้ไขที่สำคัญตรงนี้ ******
-            # อัปเดตค่า initial_record_time ใน session_state เป็นเวลาที่ผู้ใช้เลือกและกดบันทึกสำเร็จ
             st.session_state.initial_record_time = selected_time
 
         else:
             st.error(f"ไม่สามารถบันทึกข้อมูลในคอลัมน์เวลา {record_hour_str} ได้. กรุณาตรวจสอบการตั้งค่า.")
 
 
-
+st.write("---")
 
 ### ส่วนที่ 2: บันทึกผลการตรวจสอบ / เวลาตรวจสอบ (แสดงผลตารางตามต้องการ)
 
