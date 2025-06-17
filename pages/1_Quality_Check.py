@@ -24,7 +24,8 @@ MORNING_SHIFT_HOURS = [f'{h:02d}:00' for h in range(8, 20)] # ถึง 19:00 ->
 
 # กะดึก: 19:00 - 08:00 (ของวันถัดไป)
 NIGHT_SHIFT_HOURS_PART1 = [f'{h:02d}:00' for h in range(19, 24)] # 19:00 - 23:00
-NIGHT_SHIFT_HOURS_PART2 = [f'{h:02d}:00' for h in range(8)] # 00:00 - 07:00 (ถึง 08:00 ของวันถัดไป)
+# แก้ไขตรงนี้: เปลี่ยน range(8) เป็น range(9) เพื่อให้รวม 08:00 ของวันถัดไป
+NIGHT_SHIFT_HOURS_PART2 = [f'{h:02d}:00' for h in range(9)] # 00:00 - 08:00 (ถึง 08:00 ของวันถัดไป)
 NIGHT_SHIFT_HOURS = NIGHT_SHIFT_HOURS_PART1 + NIGHT_SHIFT_HOURS_PART2
 
 SHIFT_OPTIONS = {
@@ -34,16 +35,11 @@ SHIFT_OPTIONS = {
 }
 
 # เพิ่ม DataFrame สำหรับเก็บข้อมูลรายวัน (แยกตามวันที่)
-# โดยแต่ละวันจะเก็บข้อมูลในรูปแบบ DataFrame ที่มีคอลัมน์เวลาครบ 24 ชั่วโมง
-# หากข้อมูลหายไปทุกครั้งที่ Deploy หรือรีเฟรช นั่นเพราะข้อมูลถูกเก็บใน session_state เท่านั้น
-# ต้องมีการบันทึกลงไฟล์หรือ database จริงๆ เพื่อให้ข้อมูลอยู่ถาวร
 if 'daily_machine_params_data' not in st.session_state:
-    st.session_state.daily_machine_params_data = {} # Dictionary เพื่อเก็บ DataFrame แยกตามวันที่
+    st.session_state.daily_machine_params_data = {}
 
-# --- ฟังก์ชันช่วยสร้าง DataFrame สำหรับแต่ละวัน ---
 def get_daily_df(date_str):
     if date_str not in st.session_state.daily_machine_params_data:
-        # ถ้ายังไม่มีข้อมูลสำหรับวันที่นี้ ให้สร้าง DataFrame ใหม่
         new_day_df = pd.DataFrame(
             columns=['รายการตรวจสอบ', 'เป้าหมาย'] + ALL_HOURS_COLUMNS
         )
@@ -53,7 +49,6 @@ def get_daily_df(date_str):
     return st.session_state.daily_machine_params_data[date_str]
 
 
-# เปลี่ยน title ให้เป็นชื่อของหน้านี้
 st.title("✅ หน้าตรวจสอบคุณภาพเครื่องจักร")
 st.write("---")
 
@@ -68,39 +63,39 @@ with st.form("machine_param_form"):
     with col1:
         machine_id = st.text_input("รหัสเครื่องจักร (Machine ID)", value="M001")
     with col2:
-        # ช่องให้เลือกวันที่
         selected_date = st.date_input("วันที่บันทึก", datetime.now())
-    with col3: # แก้ไข: ต้องมี ":" หลัง col3
-        # ช่องให้เลือกเวลา
+    with col3:
+        # อาจจะระบุค่าเริ่มต้นให้ชัดเจนขึ้น หรือใช้ current time
+        # ถ้ายังพบปัญหาว่าล็อคเวลา ลองทดสอบเปลี่ยน initial_time เป็น time(10, 0)
+        # initial_time = datetime.now().time()
+        # ถ้าต้องการให้ค่าไม่รีเซ็ตเมื่อฟอร์มถูก submit 
+        # ต้องใช้ session_state หรือเก็บค่าในรูปแบบอื่น
+        # สำหรับการทดสอบนี้ ใช้ datetime.now().time() ไปก่อน
         selected_time = st.time_input("เวลาบันทึก", datetime.now().time())
         
     st.write("---")
 
-    # สร้างช่องกรอกข้อมูลสำหรับแต่ละรายการตรวจสอบ
     input_values = {}
     for i, (item, target) in enumerate(CHECKLIST_ITEMS.items()):
         input_label = f"{i+1}. {item} (เป้าหมาย: {target})"
+        # เพิ่มค่า value ถ้าต้องการให้มีค่าเริ่มต้น หรือดึงค่าจาก daily_machine_params_data มาแสดง
+        # ในการบันทึกครั้งแรกจะไม่มีค่า แต่หลังจากบันทึกแล้วควรจะดึงค่าล่าสุดมาแสดง
         input_values[item] = st.text_input(input_label, key=f"param_input_{i}")
 
     submitted = st.form_submit_button("บันทึกข้อมูลพารามิเตอร์")
 
     if submitted:
-        # รวมวันที่และเวลาที่เลือก
         combined_datetime = datetime.combine(selected_date, selected_time)
         record_date_str = combined_datetime.strftime("%Y-%m-%d")
         record_hour_str = combined_datetime.strftime("%H:00") # ปัดเป็นชั่วโมงเต็ม
 
-        # ดึง DataFrame ของวันที่เลือกมาใช้งาน
         current_day_df = get_daily_df(record_date_str)
 
-        # ตรวจสอบว่าคอลัมน์ชั่วโมงที่จะบันทึกมีอยู่ใน DataFrame หรือไม่
         if record_hour_str in current_day_df.columns:
-            # อัปเดตข้อมูลใน DataFrame
             for item, value in input_values.items():
                 row_index = current_day_df[current_day_df['รายการตรวจสอบ'] == item].index[0]
                 current_day_df.at[row_index, record_hour_str] = value
             
-            # บันทึก DataFrame ที่อัปเดตแล้วกลับไป
             st.session_state.daily_machine_params_data[record_date_str] = current_day_df
             st.success(f"บันทึกข้อมูลพารามิเตอร์เครื่องจักรสำหรับวันที่ {record_date_str} เวลา {record_hour_str} เรียบร้อยแล้ว!")
         else:
@@ -113,11 +108,9 @@ st.write("---")
 
 st.header("บันทึกผลการตรวจสอบ / เวลาตรวจสอบ")
 
-# เพิ่มช่องให้เลือกวันที่สำหรับแสดงข้อมูล
 display_date = st.date_input("เลือกวันที่เพื่อแสดงข้อมูล", datetime.now(), key="display_date_qc")
 display_date_str = display_date.strftime("%Y-%m-%d")
 
-# เพิ่มช่องให้เลือกกะสำหรับการแสดงผล
 selected_shift_for_display_key = st.selectbox(
     "เลือกกะเพื่อแสดงผล", 
     list(SHIFT_OPTIONS.keys()), 
@@ -129,17 +122,13 @@ selected_shift_hours_to_display = SHIFT_OPTIONS[selected_shift_for_display_key]
 if display_date_str in st.session_state.daily_machine_params_data:
     df_to_display = st.session_state.daily_machine_params_data[display_date_str].copy()
     
-    # กรองเฉพาะคอลัมน์ที่ต้องการแสดงตามกะที่เลือก
     cols_to_select = ['รายการตรวจสอบ', 'เป้าหมาย'] + selected_shift_hours_to_display
     cols_present = [col for col in cols_to_select if col in df_to_display.columns]
     
-    # แสดง DataFrame ด้วย st.dataframe ที่สามารถแก้ไขได้ (ถ้าต้องการ)
     st.dataframe(df_to_display[cols_present], use_container_width=True)
 else:
     st.info(f"ยังไม่มีข้อมูลพารามิเตอร์เครื่องจักรสำหรับวันที่ {display_date_str} ถูกบันทึก")
 
-# เพิ่มส่วนสำหรับแสดงข้อมูลจาก Machine Parameters และ Production Orders
-# ที่ดึงมาจาก app.py ผ่าน session_state (เหมือนที่คุณเคยมี)
 st.markdown("---")
 st.subheader("ข้อมูล Machine Parameters (จากหน้าหลัก):")
 if 'df_machine_params' in st.session_state:
