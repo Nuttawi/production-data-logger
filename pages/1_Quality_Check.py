@@ -2,29 +2,9 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta, time
 
-# --- การตั้งค่าเริ่มต้น (Initialization) ---
-# กำหนดรายการตรวจสอบและเป้าหมาย
-CHECKLIST_ITEMS = {
-    "ความเร็วที่ใช้ในการเดินเครื่อง": "30 - 60 องคุลี/นาที",
-    "ตรวจสอบอุณหภูมิ Vertical Sealing": "120-210°C",
-    "ตรวจสอบอุณหภูมิ Upper Inner": "90-155°C",
-    "ตรวจสอบอุณหภูมิ Lower Inner": "75-155°C",
-    "ตรวจสอบอุณหภูมิ Upper Outer": "90-155°C",
-    "ตรวจสอบอุณหภูมิ Lower Outer": "75-155°C",
-    "ตรวจสอบอุณหภูมิ KR Carousel": "60-200°C",
-    "ตรวจสอบอุณหภูมิ KR hot top plate": "85-180°C",
-    "ตรวจสอบอุณหภูมิ KR hot bottom plate": "60-140°C"
-}
+# ... (โค้ดส่วน CHECKLIST_ITEMS, ALL_HOURS_COLUMNS, MORNING_SHIFT_HOURS, NIGHT_SHIFT_HOURS_PART1, NIGHT_SHIFT_HOURS_PART2, NIGHT_SHIFT_HOURS, SHIFT_OPTIONS เหมือนเดิม) ...
 
-# กำหนดคอลัมน์เวลาสำหรับแต่ละกะ
-ALL_HOURS_COLUMNS = [f'{h:02d}:00' for h in range(24)] # 00:00 - 23:00
-
-# กะเช้า: 08:00 - 19:00 (รวม OT)
-MORNING_SHIFT_HOURS = [f'{h:02d}:00' for h in range(8, 20)] # ถึง 19:00 -> range(8, 20)
-
-# กะดึก: 19:00 - 08:00 (ของวันถัดไป)
-NIGHT_SHIFT_HOURS_PART1 = [f'{h:02d}:00' for h in range(19, 24)] # 19:00 - 23:00
-# แก้ไขตรงนี้: เปลี่ยน range(8) เป็น range(9) เพื่อให้รวม 08:00 ของวันถัดไป
+# Ensure NIGHT_SHIFT_HOURS_PART2 is corrected from previous step
 NIGHT_SHIFT_HOURS_PART2 = [f'{h:02d}:00' for h in range(9)] # 00:00 - 08:00 (ถึง 08:00 ของวันถัดไป)
 NIGHT_SHIFT_HOURS = NIGHT_SHIFT_HOURS_PART1 + NIGHT_SHIFT_HOURS_PART2
 
@@ -34,9 +14,15 @@ SHIFT_OPTIONS = {
     "แสดงทั้งหมด (00:00 - 23:00)": ALL_HOURS_COLUMNS
 }
 
-# เพิ่ม DataFrame สำหรับเก็บข้อมูลรายวัน (แยกตามวันที่)
+# เพิ่ม DataFrame สำหรับเก็บข้อมูลรายวัน (เหมือนเดิม)
 if 'daily_machine_params_data' not in st.session_state:
     st.session_state.daily_machine_params_data = {}
+
+# เพิ่มค่าเริ่มต้นสำหรับเวลาที่บันทึก
+# ใช้ key สำหรับ session_state เพื่อเก็บค่าเริ่มต้นของเวลา
+if 'initial_record_time' not in st.session_state:
+    st.session_state.initial_record_time = datetime.now().time()
+
 
 def get_daily_df(date_str):
     if date_str not in st.session_state.daily_machine_params_data:
@@ -65,21 +51,15 @@ with st.form("machine_param_form"):
     with col2:
         selected_date = st.date_input("วันที่บันทึก", datetime.now())
     with col3:
-        # อาจจะระบุค่าเริ่มต้นให้ชัดเจนขึ้น หรือใช้ current time
-        # ถ้ายังพบปัญหาว่าล็อคเวลา ลองทดสอบเปลี่ยน initial_time เป็น time(10, 0)
-        # initial_time = datetime.now().time()
-        # ถ้าต้องการให้ค่าไม่รีเซ็ตเมื่อฟอร์มถูก submit 
-        # ต้องใช้ session_state หรือเก็บค่าในรูปแบบอื่น
-        # สำหรับการทดสอบนี้ ใช้ datetime.now().time() ไปก่อน
-        selected_time = st.time_input("เวลาบันทึก", datetime.now().time())
+        # ****** การแก้ไขที่สำคัญตรงนี้ ******
+        # ใช้ค่าจาก st.session_state.initial_record_time เป็นค่าเริ่มต้นของ time_input
+        selected_time = st.time_input("เวลาบันทึก", value=st.session_state.initial_record_time)
         
     st.write("---")
 
     input_values = {}
     for i, (item, target) in enumerate(CHECKLIST_ITEMS.items()):
         input_label = f"{i+1}. {item} (เป้าหมาย: {target})"
-        # เพิ่มค่า value ถ้าต้องการให้มีค่าเริ่มต้น หรือดึงค่าจาก daily_machine_params_data มาแสดง
-        # ในการบันทึกครั้งแรกจะไม่มีค่า แต่หลังจากบันทึกแล้วควรจะดึงค่าล่าสุดมาแสดง
         input_values[item] = st.text_input(input_label, key=f"param_input_{i}")
 
     submitted = st.form_submit_button("บันทึกข้อมูลพารามิเตอร์")
@@ -87,7 +67,7 @@ with st.form("machine_param_form"):
     if submitted:
         combined_datetime = datetime.combine(selected_date, selected_time)
         record_date_str = combined_datetime.strftime("%Y-%m-%d")
-        record_hour_str = combined_datetime.strftime("%H:00") # ปัดเป็นชั่วโมงเต็ม
+        record_hour_str = combined_datetime.strftime("%H:00")
 
         current_day_df = get_daily_df(record_date_str)
 
@@ -98,11 +78,16 @@ with st.form("machine_param_form"):
             
             st.session_state.daily_machine_params_data[record_date_str] = current_day_df
             st.success(f"บันทึกข้อมูลพารามิเตอร์เครื่องจักรสำหรับวันที่ {record_date_str} เวลา {record_hour_str} เรียบร้อยแล้ว!")
+            
+            # ****** การแก้ไขที่สำคัญตรงนี้ ******
+            # อัปเดตค่า initial_record_time ใน session_state เป็นเวลาที่ผู้ใช้เลือกและกดบันทึกสำเร็จ
+            st.session_state.initial_record_time = selected_time
+
         else:
             st.error(f"ไม่สามารถบันทึกข้อมูลในคอลัมน์เวลา {record_hour_str} ได้. กรุณาตรวจสอบการตั้งค่า.")
 
 
-st.write("---")
+
 
 ### ส่วนที่ 2: บันทึกผลการตรวจสอบ / เวลาตรวจสอบ (แสดงผลตารางตามต้องการ)
 
